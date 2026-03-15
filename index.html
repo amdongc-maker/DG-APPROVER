@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DG Requirement – DG Approver</title>
+
+<style>
+body{margin:0;font-family:Segoe UI;background:#f1f5f9}
+header{background:#1e3a8a;color:#fff;padding:16px;text-align:center;font-size:20px;font-weight:700}
+.container{max-width:900px;margin:auto;padding:18px}
+.card{background:#fff;border-radius:14px;padding:18px;margin-bottom:18px;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+input, select{
+  width:100%;
+  padding:12px;
+  margin-top:10px;
+  border-radius:12px;
+  border:1px solid #ddd;
+  box-sizing:border-box;
+  font-size:14px;
+}
+/* Buttons */
+button{
+  background-color: #1e3a8a;
+  width:100%;
+  padding:14px;
+  margin-top:12px;
+  border:none;
+  border-radius:14px;
+  font-weight:700;color: #f1f5f9;
+  cursor:pointer;
+}
+.btn-ok{background:#22c55e;color:white}
+.btn-no{background:#ef4444;color:white;margin-left:10px}
+.hidden{display:none}
+.info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 25px;margin-top:8px;font-size:15px}
+.label{font-weight:600;color:#475569}
+.badge{background:#e0e7ff;color:#1e3a8a;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:700}
+table{width:100%;border-collapse:collapse;margin-top:15px;font-size:14px}
+th,td{border:1px solid #e5e7eb;padding:9px;text-align:center}
+th{background:#f8fafc;font-weight:700}
+.footer-row{background:#f1f5f9;font-weight:700}
+.history{background:#f8fafc}
+.history-approved{
+  background:#dcfce7 !important;   /* light green */
+  border-left:6px solid #22c55e;
+}
+
+.history-rejected{
+  background:#f1f5f9 !important;   /* grey */
+  border-left:6px solid #94a3b8;
+}
+</style>
+</head>
+
+<body>
+
+<header>🧑‍⚖️ DG APPROVER PANEL</header>
+
+<div class="container">
+
+<div class="card" id="loginBox">
+<h3>DG Approver Login</h3>
+<input id="cpf" placeholder="CPF">
+<input id="pass" type="password" placeholder="Password">
+<button onclick="login()">Login</button>
+<div id="msg" style="color:red"></div>
+</div>
+
+<div id="mainBox" class="hidden">
+
+<div class="card">Welcome <b id="dgName"></b></div>
+
+<div class="card">
+<h3>⏳ Pending Requests</h3>
+<div id="pending"></div>
+</div>
+
+<div class="card history">
+<h3>📜 History </h3>
+<div id="dgHistory"></div>
+</div>
+
+</div>
+</div>
+
+<script>
+/* ---------- DATE FORMAT ---------- */
+function formatDateDMY(d){
+  let dt = new Date(d);
+  if(isNaN(dt)) return d || "NA";
+  return dt.toLocaleDateString("en-GB");
+}
+
+/* ---------- TOTAL TIME FORMAT (FIXED) ---------- */
+function formatTotalTime(t){
+  if(!t || t==="NA") return "NA";
+
+  if(String(t).includes("Hrs")) return t;
+
+  let mins = parseInt(t);
+  if(isNaN(mins)) return t;
+
+  let hrs = Math.floor(mins/60);
+  let m = mins%60;
+
+  return `${hrs} Hrs ${m} Min`;
+}
+function formatDateTimeDMYHM(d){
+  if(!d || d==="NA") return "NA";
+
+  let dt = new Date(d);
+  if(isNaN(dt)) return d;
+
+  let day = String(dt.getDate()).padStart(2,"0");
+  let mon = String(dt.getMonth()+1).padStart(2,"0");
+  let yr  = dt.getFullYear();
+  let hr  = String(dt.getHours()).padStart(2,"0");
+  let min = String(dt.getMinutes()).padStart(2,"0");
+
+  return `${day}-${mon}-${yr} ${hr}:${min}`;
+}
+const WEBAPP_URL="https://script.google.com/macros/s/AKfycbw0sDlTPWJa0H6Wj8ug6dGzttaWqIhW0X-B4MdwTfa_Q5Uw_YGS1qdkLAIznComZz5kRQ/exec";
+
+const DG_USERS=[
+ {cpf:"95606",pass:"*ongc123",name:"SUDHIR SINGH"},
+ {cpf:"95843",pass:"*ongc123",name:"DIPAK MEDAK"},
+ {cpf:"67631",pass:"*ongc123",name:"JIGNESH PATEL"}
+];
+
+const CONTRACTORS=[
+ "SURESH OIL FIELD"
+ ];
+
+let CURRENT_DG=null;
+
+/* LOGIN */
+function login(){
+  let cpfVal = document.getElementById("cpf").value.trim();
+  let passVal = document.getElementById("pass").value.trim();
+
+  let u = DG_USERS.find(x => x.cpf === cpfVal && x.pass === passVal);
+
+  if(!u){
+    msg.innerText = "Invalid CPF or Password";
+    return;
+  }
+
+  CURRENT_DG = u;
+  loginBox.classList.add("hidden");
+  mainBox.classList.remove("hidden");
+  dgName.innerText = u.name;
+
+  loadDG();
+  loadDGHistory();
+
+  setInterval(loadDGHistory, 8000);
+  
+}
+/* LOAD PENDING */
+function loadDG(){
+
+  fetch(WEBAPP_URL+"?action=dgPendingGrouped")
+  .then(r=>r.json())
+  .then(data=>{
+
+    let html="";
+
+    data.forEach(req=>{
+
+      let rows="", totalCap=0;
+
+      req.rows.forEach((w,i)=>{
+
+        totalCap += Number(w.cap || 0);
+
+        let opts = CONTRACTORS.map(c=>`<option>${c}</option>`).join("");
+
+        rows += `
+<tr>
+  <td>${i+1}</td>
+  <td>${w.well}</td>
+  <td>${w.cap}</td>
+  <td>
+    <select id="contractor_${req.requestId}_${w.rowId}">
+      <option value="">-- Reject --</option>
+      ${opts}
+    </select>
+  </td>
+</tr>`;
+      });
+
+      html += `
+      <div class="card">
+
+        <h3>Request ID: ${req.requestId}</h3>
+
+        <div class="info-grid">
+          <div><span class="label">Installation:</span> ${req.installation}</div>
+          <div><span class="label">Shutdown Date:</span> ${formatDateDMY(req.shutdownDate)}</div>
+          <div><span class="label">Shutdown Type:</span> <span class="badge">${req.shutdownType}</span></div>
+          <div><span class="label">Information:</span> ${req.information}</div>
+          <div><span class="label">Feeder:</span> ${req.feeder}</div>
+          <div><span class="label">Requested By:</span> ${req.requestedBy}</div>
+          <div><span class="label">Mobile:</span> ${req.mobile}</div>
+        </div>
+
+        <table>
+          <tr>
+            <th>Sr</th>
+            <th>Well</th>
+            <th>Cap</th>
+            <th>Contractor</th>
+          </tr>
+          ${rows}
+          <tr class="footer-row">
+            <td colspan="2">TOTAL</td>
+            <td>${totalCap}</td>
+            <td colspan="3">${req.rows.length} Wells</td>
+          </tr>
+        </table>
+
+        <button class="btn-ok" onclick="finalApprove(${req.requestId})">FINAL APPROVE</button>
+        
+      </div>`;
+    });
+
+    pending.innerHTML = html || "No Pending Requests";
+  });
+}
+
+/* LOAD HISTORY */
+function loadDGHistory(){
+
+ fetch(WEBAPP_URL+"?action=dgHistory&t="+Date.now())
+ .then(r=>r.json())
+ .then(data=>{
+
+   if(!data.length){
+     dgHistory.innerHTML="No History";
+     return;
+   }
+
+   // ⭐ Latest history top par lane ke liye
+   data.reverse();
+
+   let html="";
+
+   data.forEach(r=>{
+
+     if(r.approverStatus !== "Approved" && r.approverStatus !== "Rejected") return;
+
+     let cls = "";
+     if(r.approverStatus=="Approved") cls="history-approved";
+     if(r.approverStatus=="Rejected") cls="history-rejected";
+
+     html += `
+     <div class="card ${cls}">
+      <b>Request ID:</b> ${r.requestId || "NA"}<br>
+      <b>Date:</b> ${r.shutdownDate ? formatDateDMY(r.shutdownDate) : "NA"}<br>
+      <b>Installation:</b> ${r.installation || "NA"}<br>
+      <b>Feeder:</b> ${r.feeder || "NA"}<br>
+      <b>Well:</b> ${r.well || "NA"}<br>
+      <b>Capacity:</b> ${r.cap || "NA"}<br>
+
+      <hr>
+
+      <b>Approver Status:</b> ${r.approverStatus}<br>
+      <b>Contractor:</b> ${r.contractor || "NA"}<br>
+
+      <b>Operator Name:</b> ${r.operatorName || "NA"}<br>
+      <b>Operator Mobile:</b> ${r.operatorMobile || "NA"}<br>
+
+      <b>DG Deploy Status:</b> ${r.dgDeployStatus || "NA"}<br>
+      <b>DG Start:</b> ${formatDateTimeDMYHM(r.dgStartTime)}<br>
+      <b>DG Stop:</b> ${formatDateTimeDMYHM(r.dgStopTime)}<br>
+      <b>Total Time:</b> ${formatTotalTime(r.totalTime)}
+     </div>`;
+   });
+
+   dgHistory.innerHTML = html || "No History Available";
+ });
+}
+/* FINAL ACTIONS (same as your logic) */
+function finalApprove(rid){
+
+if(!confirm("Finalize this request?")){
+return;
+}
+
+let approved=[];
+let rejected=[];
+let contractors={};
+
+let selects = document.querySelectorAll(`[id^="contractor_${rid}_"]`);
+
+if(selects.length === 0){
+alert("No wells found");
+return;
+}
+
+selects.forEach(s=>{
+
+let parts = s.id.split("_");
+let rowId = Number(parts[2]);
+let contractor = s.value.trim();
+
+if(contractor !== ""){
+
+approved.push(rowId);
+contractors[rowId] = contractor;
+
+}else{
+
+rejected.push(rowId);
+contractors[rowId] = "NA";
+
+}
+
+});
+
+fetch(WEBAPP_URL+"?action=dgFinalAction"+
+"&approved="+encodeURIComponent(JSON.stringify(approved))+
+"&rejected="+encodeURIComponent(JSON.stringify(rejected))+
+"&contractors="+encodeURIComponent(JSON.stringify(contractors))+
+"&t="+Date.now()
+)
+.then(r=>r.text())
+.then(res=>{
+alert("All Wells Processed Successfully");
+loadDG();
+loadDGHistory();
+});
+
+}
+</script>
+</body>
+
+</html>
